@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Teste de QI — R$5 por resultado</title>
+<style>
+:root{--bg:#eef2f7;--card:#fff;--accent:#1e88e5;--success:#2e7d32}
+body{font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.card{background:var(--card);max-width:900px;width:100%;border-radius:14px;padding:26px;box-shadow:0 10px 30px rgba(2,6,23,0.08)}
+h1{margin:0 0 8px;font-size:20px;color:#111}
+p.lead{margin:0 0 18px;color:#444}
+.grid{display:grid;grid-template-columns:1fr 320px;gap:20px}
+.left{min-width:0}
+.question{background:#f8fafc;padding:14px;border-radius:10px;margin-bottom:12px}
+.btn{background:var(--accent);color:#fff;padding:12px 16px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+.btn-secondary{background:#e8eef7;color:#0f1724;border-radius:10px;padding:10px 12px;border:0;cursor:pointer}
+#qrBox{display:flex;flex-direction:column;align-items:center;gap:12px;padding:12px;border-radius:10px;background:#fff}
+input[type=text], input[type=number], textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #dde6f0}
+small{color:#666}
+#result{margin-top:12px;padding:12px;border-radius:10px;background:#f1f8f3;color:var(--success);font-weight:700}
+@media(max-width:880px){ .grid{grid-template-columns:1fr; } .card{padding:18px} }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Teste de QI — R$5 por resultado</h1>
+  <p class="lead">Responda 15 perguntas e pague via PIX. O QR e o payload são gerados para a sua chave PIX.</p>
+
+  <div class="grid">
+    <div class="left">
+      <div id="quiz"></div>
+
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn" onclick="criarCobranca()">Gerar cobrança PIX (R$5)</button>
+        <button class="btn-secondary" onclick="reiniciar()">Reiniciar</button>
+      </div>
+
+      <div id="result" style="display:none"></div>
+    </div>
+
+    <div>
+      <div id="qrBox">
+        <div id="qrcode" style="padding:10px;background:#fff;border-radius:6px"></div>
+        <div style="width:100%">
+          <label><strong>Payload (copie para o app do banco)</strong></label>
+          <textarea id="pixPayload" rows="3" readonly style="width:100%;border-radius:8px"></textarea>
+        </div>
+
+        <div style="width:100%">
+          <label><strong>TxID (opcional)</strong></label>
+          <input id="txid" type="text" placeholder="Insira o txid do comprovante, se tiver" />
+          <small>Peça ao pagador o txid para confirmar manualmente.</small>
+        </div>
+
+        <small style="color:#666">Obs: Para liberação automática, configure webhook no backend com Gerencianet.</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const perguntas = [
+  { q: "Qual é o próximo número: 2,4,8,16,?", options:[{t:"20",v:0},{t:"32",v:1},{t:"24",v:0}] },
+  { q: "Complete: A,C,E,G,?", options:[{t:"H",v:0},{t:"I",v:1},{t:"J",v:0}] },
+  { q: "Se todos os gatos são animais... todos os gatos são felinos?", options:[{t:"Sim",v:1},{t:"Não",v:0},{t:"Não sei",v:0}] },
+  { q: "Número mais próximo de 50?", options:[{t:"45",v:0},{t:"49",v:1},{t:"55",v:0}] },
+  { q: "5 lápis R$10. 8 lápis custam?", options:[{t:"16",v:1},{t:"15",v:0},{t:"12",v:0}] },
+  { q: "Qual figura completa?", options:[{t:"Quadrado",v:1},{t:"Triângulo",v:0},{t:"Círculo",v:0}] },
+  { q: "Se ontem foi terça, daqui a 4 dias será?", options:[{t:"Sábado",v:1},{t:"Sexta",v:0},{t:"Quarta",v:0}] },
+  { q: "Metade de 144?", options:[{t:"62",v:0},{t:"72",v:1},{t:"74",v:0}] },
+  { q: "Todas rosas são flores... todas rosas murcham rápido?", options:[{t:"Sim",v:0},{t:"Não",v:1},{t:"Não sei",v:0}] },
+  { q: "Escolha que não pertence: 2,4,6,9,8", options:[{t:"2",v:0},{t:"9",v:1},{t:"8",v:0}] },
+  { q: "João tem 3x a idade de Maria. Maria 4 anos. João?", options:[{t:"12",v:1},{t:"9",v:0},{t:"10",v:0}] },
+  { q: "Sequência: 1,1,2,3,5,?", options:[{t:"7",v:0},{t:"8",v:1},{t:"6",v:0}] },
+  { q: "Oposto de 'calmo'?", options:[{t:"tranquilo",v:0},{t:"nervoso",v:1},{t:"paciente",v:0}] },
+  { q: "Complete: 10,20,40,80,?", options:[{t:"100",v:0},{t:"160",v:1},{t:"120",v:0}] },
+  { q: "Qual é um triângulo?", options:[{t:"⬜",v:0},{t:"🔺",v:1},{t:"⚪",v:0}] }
+];
+
+function embaralhar(a){ return a.sort(()=>Math.random()-0.5); }
+const quizPerguntas = embaralhar(perguntas).slice(0,15);
+
+function montarQuiz(){
+  const quiz = document.getElementById('quiz');
+  quiz.innerHTML = "";
+  quizPerguntas.forEach((p,i)=>{
+    const div = document.createElement('div');
+    div.className = 'question';
+    let html = `<p><strong>${i+1}.</strong> ${p.q}</p>`;
+    p.options.forEach(opt=>{
+      html += `<label style="display:block;margin:6px 0"><input type="radio" name="q${i}" value="${opt.v}"> ${opt.t}</label>`;
+    });
+    div.innerHTML = html;
+    quiz.appendChild(div);
+  });
+}
+montarQuiz();
+
+async function criarCobranca(){
+  // Cria cobrança no backend (backend deve estar deployado)
+  const score = calcularScore();
+  try{
+    const response = await fetch('https://SEU_BACKEND.onrender.com/create-charge',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({amount:5, description:'Teste de QI'})
+    });
+    const data = await response.json();
+    document.getElementById('pixPayload').value = data.payload;
+    new QRCode(document.getElementById('qrcode'), {text:data.payload,width:240,height:240,correctLevel:QRCode.CorrectLevel.Q});
+    alert('Cobranca gerada! Escaneie o QR ou copie o payload.');
+    pollingStatus(data.id);
+  }catch(e){console.error(e);alert('Erro ao criar cobrança');}
+}
+
+function calcularScore(){
+  let score = 0;
+  for(let i=0;i
